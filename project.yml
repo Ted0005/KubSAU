@@ -12,12 +12,19 @@ targets:
       - path: index.html
         buildPhase: resources
       - path: Assets.xcassets
+      - path: Icons
+        buildPhase: resources
     info:
       path: Info.plist
       properties:
         CFBundleDisplayName: Учёба
         CFBundleShortVersionString: "3.7"
         CFBundleVersion: "1"
+        CFBundleIcons:
+          CFBundlePrimaryIcon:
+            CFBundleIconFiles:
+              - UchyobaIcon60x60
+            CFBundleIconName: AppIcon
         UILaunchScreen: {}
         UIUserInterfaceStyle: Dark
         UIStatusBarStyle: UIStatusBarStyleLightContent
