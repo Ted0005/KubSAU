@@ -273,10 +273,29 @@ function sendNotif(items){
   if(!canNotify())return;
   try{var p=window.webkit.messageHandlers.notify.postMessage({items:items});if(p&&p.catch)p.catch(function(){})}catch(e){}
 }
+/* данные для виджета: пары на 8 дней вперёд и ближайшие невыполненные задачи */
+function buildWidget(){
+  var data=cur(),out=[],base=day0(new Date());
+  for(var i=0;i<8;i++){
+    var d=addD(base,i);if(d.getDay()===0)continue;
+    var w=weekOf(d),di=(d.getDay()+6)%7,k=dkey(d);
+    data.lessons.filter(function(l){return l.w===w&&l.d===di}).forEach(function(l){
+      var tm=(l.t||"").match(/\d{1,2}:\d{2}/g);if(!tm)return;
+      var pp=splitRoom(lessonText(l));
+      out.push({d:k,s:("0"+tm[0]).slice(-5),e:("0"+(tm[1]||tm[0])).slice(-5),n:l.s,r:pp.r||"",k:l.k||""});
+    });
+  }
+  var tasks=S.tasks.filter(function(t){return !t.done}).sort(function(a,b){return a.due-b.due}).slice(0,6).map(function(t){return{t:t.title,s:t.subj,ty:t.type,due:t.due}});
+  return JSON.stringify({lessons:out,tasks:tasks,updated:Date.now()});
+}
+function sendWidget(){
+  if(!window.NATIVE||!window.webkit||!window.webkit.messageHandlers||!window.webkit.messageHandlers.widget)return;
+  try{var p=window.webkit.messageHandlers.widget.postMessage({json:buildWidget()});if(p&&p.catch)p.catch(function(){})}catch(e){}
+}
 function schedNotif(){
   if(!canNotify())return;
   clearTimeout(NT);
-  NT=setTimeout(function(){sendNotif(buildNotifs())},400);
+  NT=setTimeout(function(){sendNotif(buildNotifs());sendWidget()},400);
 }
 /* вкладка «Настройки» */
 var NOPT=[[15,"15 мин"],[30,"30 мин"],[60,"1 час"],[180,"3 часа"],[1440,"1 день"],[4320,"3 дня"],[10080,"1 неделя"]];

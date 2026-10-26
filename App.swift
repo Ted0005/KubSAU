@@ -1,6 +1,7 @@
 import UIKit
 import WebKit
 import UserNotifications
+import WidgetKit
 
 // Учёба ЮФ2611: нативная оболочка для index.html.
 // Страница лежит внутри приложения и открывается по адресу uchyoba://local/index.html.
@@ -118,6 +119,7 @@ final class WebViewController: UIViewController, WKUIDelegate, WKScriptMessageHa
         uc.addUserScript(WKUserScript(source: "window.NATIVE=1;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         uc.addScriptMessageHandler(self, contentWorld: .page, name: "saveFile")
         uc.addScriptMessageHandler(self, contentWorld: .page, name: "notify")
+        uc.addScriptMessageHandler(self, contentWorld: .page, name: "widget")
 
         web = WKWebView(frame: .zero, configuration: cfg)
         web.uiDelegate = self
@@ -206,6 +208,18 @@ final class WebViewController: UIViewController, WKUIDelegate, WKScriptMessageHa
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage,
                                replyHandler: @escaping (Any?, String?) -> Void) {
+        if message.name == "widget" {
+            // данные для виджета: пишем в общее хранилище (App Group); без него просто пропускаем
+            let json = ((message.body as? [String: Any])?["json"] as? String) ?? ""
+            var ok = false
+            if let data = json.data(using: .utf8),
+               let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.ru.arman.uchyoba") {
+                ok = (try? data.write(to: dir.appendingPathComponent("snapshot.json"), options: .atomic)) != nil
+                if ok { WidgetCenter.shared.reloadAllTimelines() }
+            }
+            replyHandler(ok, nil)
+            return
+        }
         if message.name == "notify" {
             let items = ((message.body as? [String: Any])?["items"] as? [[String: Any]]) ?? []
             scheduleNotifications(items, reply: replyHandler)
