@@ -34,11 +34,12 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build
 
-      - name: Проверка иконки
+      - name: Иконки в приложение
         run: |
           APP=build/Release-iphoneos/Uchyoba.app
+          ls -R Icons Assets.xcassets
+          cp Icons/UchyobaIcon60x60@2x.png Icons/UchyobaIcon60x60@3x.png "$APP/"
           ls "$APP"
-          plutil -p "$APP/Info.plist" | grep -i -A8 icon || true
 
       - name: Упаковка в ipa
         run: |
