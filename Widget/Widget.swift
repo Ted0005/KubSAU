@@ -19,8 +19,8 @@ struct Lesson: Codable {
         f.dateFormat = "yyyy-MM-dd HH:mm"
         return f
     }()
-    var start: Date? { Lesson.fmt.date(from: d + " " + s) }
-    var end: Date? { Lesson.fmt.date(from: d + " " + e) }
+    var start: Date? { Lesson.fmt.date(from: "\(d) \(s)") }
+    var end: Date? { Lesson.fmt.date(from: "\(d) \(e)") }
 }
 
 struct TaskItem: Codable {
@@ -67,9 +67,12 @@ struct Provider: TimelineProvider {
                 }
             }
         }
-        let sorted = Array(Set(dates)).sorted().prefix(24)
-        let entries = sorted.map { Entry(date: $0, snap: snap) }
-        completion(Timeline(entries: Array(entries), policy: .after(now.addingTimeInterval(3600))))
+        let sorted: [Date] = Array(Set(dates)).sorted()
+        var entries: [Entry] = []
+        for d in sorted.prefix(24) {
+            entries.append(Entry(date: d, snap: snap))
+        }
+        completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(3600))))
     }
 }
 
@@ -94,17 +97,28 @@ struct WidgetView: View {
 
     var upcoming: [Lesson] {
         guard let s = entry.snap else { return [] }
-        return s.lessons
-            .filter { ($0.end ?? Date.distantPast) > entry.date }
-            .sorted { ($0.start ?? Date.distantFuture) < ($1.start ?? Date.distantFuture) }
+        let now = entry.date
+        var list: [Lesson] = []
+        for l in s.lessons {
+            if let e = l.end, e > now { list.append(l) }
+        }
+        list.sort { (a: Lesson, b: Lesson) -> Bool in
+            let x: Date = a.start ?? Date.distantFuture
+            let y: Date = b.start ?? Date.distantFuture
+            return x < y
+        }
+        return list
     }
 
     var nextTask: TaskItem? {
         guard let s = entry.snap else { return nil }
-        return s.tasks
-            .filter { Date(timeIntervalSince1970: $0.due / 1000) > entry.date }
-            .sorted { $0.due < $1.due }
-            .first
+        let nowMs: Double = entry.date.timeIntervalSince1970 * 1000
+        var list: [TaskItem] = []
+        for t in s.tasks {
+            if t.due > nowMs { list.append(t) }
+        }
+        list.sort { (a: TaskItem, b: TaskItem) -> Bool in a.due < b.due }
+        return list.first
     }
 
     func dayLabel(_ l: Lesson) -> String {
@@ -113,7 +127,19 @@ struct WidgetView: View {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ru_RU")
         f.dateFormat = "E"
-        return f.string(from: st).capitalized + " "
+        let w: String = f.string(from: st).capitalized
+        return "\(w) "
+    }
+
+    func timeRange(_ l: Lesson) -> String {
+        let day: String = dayLabel(l)
+        return "\(day)\(l.s)–\(l.e)"
+    }
+
+    func timeAndRoom(_ l: Lesson) -> String {
+        let t: String = timeRange(l)
+        if l.r.isEmpty { return t }
+        return "\(t) · \(l.r)"
     }
 
     func state(_ l: Lesson) -> String {
@@ -125,20 +151,23 @@ struct WidgetView: View {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ru_RU")
         f.dateFormat = "d MMM, HH:mm"
-        return t.ty + ": " + t.t + " · " + f.string(from: Date(timeIntervalSince1970: t.due / 1000))
+        let when: String = f.string(from: Date(timeIntervalSince1970: t.due / 1000))
+        return "\(t.ty): \(t.t) · \(when)"
     }
 
     func row(_ l: Lesson) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        let barColor: Color = (l.k == "lec") ? lecColor : muted
+        let line2: String = timeAndRoom(l)
+        return HStack(alignment: .top, spacing: 8) {
             RoundedRectangle(cornerRadius: 2)
-                .fill(l.k == "lec" ? lecColor : muted)
+                .fill(barColor)
                 .frame(width: 4)
             VStack(alignment: .leading, spacing: 1) {
                 Text(l.n)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
-                Text(dayLabel(l) + l.s + "–" + l.e + (l.r.isEmpty ? "" : " · " + l.r))
+                Text(line2)
                     .font(.system(size: 12))
                     .foregroundColor(muted)
                     .lineLimit(1)
@@ -147,69 +176,86 @@ struct WidgetView: View {
         }
     }
 
-    var body: some View {
-        if entry.snap == nil {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Учёба").font(.headline).foregroundColor(accent)
-                Text("Откройте приложение, чтобы здесь появились пары и сроки.")
-                    .font(.system(size: 12))
+    var emptyView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Учёба").font(.headline).foregroundColor(accent)
+            Text("Откройте приложение, чтобы здесь появились пары и сроки.")
+                .font(.system(size: 12))
+                .foregroundColor(muted)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    var smallView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let l = upcoming.first {
+                Text(state(l))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(accent)
+                Text(l.n)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(3)
+                Text(timeRange(l))
+                    .font(.system(size: 13))
                     .foregroundColor(muted)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .widgetBG(bgColor)
-        } else if family == .systemSmall {
-            VStack(alignment: .leading, spacing: 4) {
-                if let l = upcoming.first {
-                    Text(state(l))
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(accent)
-                    Text(l.n)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                        .lineLimit(3)
-                    Text(dayLabel(l) + l.s + "–" + l.e)
+                if !l.r.isEmpty {
+                    Text(l.r)
                         .font(.system(size: 13))
                         .foregroundColor(muted)
-                    if !l.r.isEmpty {
-                        Text(l.r).font(.system(size: 13)).foregroundColor(muted).lineLimit(1)
-                    }
-                } else {
-                    Text("Пар больше нет")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                    if let t = nextTask {
-                        Text(taskLine(t))
-                            .font(.system(size: 12))
-                            .foregroundColor(muted)
-                            .lineLimit(4)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .widgetBG(bgColor)
-        } else {
-            VStack(alignment: .leading, spacing: 6) {
-                if upcoming.isEmpty {
-                    Text("Пар больше нет")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                } else {
-                    ForEach(Array(upcoming.prefix(3).enumerated()), id: \.offset) { _, l in
-                        row(l)
-                    }
-                }
-                Spacer(minLength: 0)
-                if let t = nextTask {
-                    Text(taskLine(t))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(accent)
                         .lineLimit(1)
                 }
+            } else {
+                Text("Пар больше нет")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+                if let t = nextTask {
+                    Text(taskLine(t))
+                        .font(.system(size: 12))
+                        .foregroundColor(muted)
+                        .lineLimit(4)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .widgetBG(bgColor)
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    var mediumView: some View {
+        let shown: [Lesson] = Array(upcoming.prefix(3))
+        return VStack(alignment: .leading, spacing: 6) {
+            if shown.isEmpty {
+                Text("Пар больше нет")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+            } else {
+                ForEach(0..<shown.count, id: \.self) { i in
+                    row(shown[i])
+                }
+            }
+            Spacer(minLength: 0)
+            if let t = nextTask {
+                Text(taskLine(t))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(accent)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder var content: some View {
+        if entry.snap == nil {
+            emptyView
+        } else if family == .systemSmall {
+            smallView
+        } else {
+            mediumView
+        }
+    }
+
+    var body: some View {
+        content.widgetBG(bgColor)
     }
 }
 
