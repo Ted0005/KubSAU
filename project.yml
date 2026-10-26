@@ -23,6 +23,9 @@ targets:
         CFBundleIcons:
           CFBundlePrimaryIcon:
             CFBundleIconFiles:
+              - UchyobaIcon20x20
+              - UchyobaIcon29x29
+              - UchyobaIcon40x40
               - UchyobaIcon60x60
             CFBundleIconName: AppIcon
         UILaunchScreen: {}
