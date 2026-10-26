@@ -2,6 +2,7 @@ import UIKit
 import WebKit
 import UserNotifications
 import WidgetKit
+import Vision
 
 // Учёба ЮФ2611: нативная оболочка для index.html.
 // Страница лежит внутри приложения и открывается по адресу uchyoba://local/index.html.
@@ -120,6 +121,7 @@ final class WebViewController: UIViewController, WKUIDelegate, WKScriptMessageHa
         uc.addScriptMessageHandler(self, contentWorld: .page, name: "saveFile")
         uc.addScriptMessageHandler(self, contentWorld: .page, name: "notify")
         uc.addScriptMessageHandler(self, contentWorld: .page, name: "widget")
+        uc.addScriptMessageHandler(self, contentWorld: .page, name: "ocr")
 
         web = WKWebView(frame: .zero, configuration: cfg)
         web.uiDelegate = self
@@ -208,6 +210,38 @@ final class WebViewController: UIViewController, WKUIDelegate, WKScriptMessageHa
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage,
                                replyHandler: @escaping (Any?, String?) -> Void) {
+        if message.name == "ocr" {
+            // распознавание текста на фото конспекта (Vision): русский и английский, если iOS их поддерживает
+            let b64 = ((message.body as? [String: Any])?["data"] as? String) ?? ""
+            guard let data = Data(base64Encoded: b64),
+                  let image = UIImage(data: data),
+                  let cg = image.cgImage else {
+                replyHandler("", nil)
+                return
+            }
+            DispatchQueue.global(qos: .userInitiated).async {
+                var lines: [String] = []
+                let request = VNRecognizeTextRequest { req, _ in
+                    let found = (req.results as? [VNRecognizedTextObservation]) ?? []
+                    for o in found {
+                        if let top = o.topCandidates(1).first {
+                            lines.append(top.string)
+                        }
+                    }
+                }
+                request.recognitionLevel = .accurate
+                request.usesLanguageCorrection = true
+                if let supported = try? request.supportedRecognitionLanguages() {
+                    let want = ["ru-RU", "en-US"].filter { supported.contains($0) }
+                    if !want.isEmpty { request.recognitionLanguages = want }
+                }
+                let handler = VNImageRequestHandler(cgImage: cg, options: [:])
+                try? handler.perform([request])
+                let result = lines.joined(separator: "\n")
+                DispatchQueue.main.async { replyHandler(result, nil) }
+            }
+            return
+        }
         if message.name == "widget" {
             // данные для виджета: пишем в общее хранилище (App Group); без него просто пропускаем
             let json = ((message.body as? [String: Any])?["json"] as? String) ?? ""
