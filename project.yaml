@@ -1,0 +1,34 @@
+name: Uchyoba
+options:
+  bundleIdPrefix: ru.arman
+  deploymentTarget:
+    iOS: "15.0"
+targets:
+  Uchyoba:
+    type: application
+    platform: iOS
+    sources:
+      - path: App.swift
+      - path: index.html
+        buildPhase: resources
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Учёба
+        CFBundleShortVersionString: "3.7"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Dark
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSPhotoLibraryUsageDescription: Чтобы прикреплять фото конспектов.
+        NSCameraUsageDescription: Чтобы фотографировать конспекты.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.arman.uchyoba
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.0"
+        CODE_SIGNING_ALLOWED: "NO"
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGN_IDENTITY: ""
