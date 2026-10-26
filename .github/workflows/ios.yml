@@ -13,9 +13,11 @@ jobs:
       - name: Иконка приложения
         run: |
           D=Assets.xcassets/AppIcon.appiconset
-          mkdir -p "$D"
+          mkdir -p "$D" Icons
           SRC=$(ls icon.* | head -1)
           sips -z 1024 1024 -s format png "$SRC" --out "$D/icon.png"
+          sips -z 120 120 -s format png "$SRC" --out "Icons/UchyobaIcon60x60@2x.png"
+          sips -z 180 180 -s format png "$SRC" --out "Icons/UchyobaIcon60x60@3x.png"
           printf '{"info":{"author":"xcode","version":1}}' > Assets.xcassets/Contents.json
           printf '{"images":[{"filename":"icon.png","idiom":"universal","platform":"ios","size":"1024x1024"}],"info":{"author":"xcode","version":1}}' > "$D/Contents.json"
 
@@ -31,6 +33,12 @@ jobs:
             SYMROOT="$PWD/build" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build
+
+      - name: Проверка иконки
+        run: |
+          APP=build/Release-iphoneos/Uchyoba.app
+          ls "$APP"
+          plutil -p "$APP/Info.plist" | grep -i -A8 icon || true
 
       - name: Упаковка в ipa
         run: |
