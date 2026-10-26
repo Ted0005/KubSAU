@@ -232,14 +232,16 @@ var SN={1:[
 function snapshot(){var o=[];[1,2].forEach(function(w){SN[w].forEach(function(d,i){d.forEach(function(l){o.push({w:w,d:i,t:TM[l[0]],s:l[1],r:[l[2],l[3]].filter(Boolean).join(" · "),k:roleOf(l[2])||kindFor(l[1],l[3]||"",false),pe:(l[1].indexOf("Элективные")===0&&!l[2])?PEC:undefined})})})});return o}
 
 /* настройки напоминаний: за сколько минут до срока присылать, отдельно для каждого типа задач */
-function defNset(){return{on:true,o:{"ДЗ":[1440],"Дедлайн":[1440],"Зачёт":[10080,4320,1440],"Экзамен":[10080,4320,1440]}}}
-function normN(x){var d=defNset();if(!x||typeof x!=="object")return d;if(typeof x.on==="boolean")d.on=x.on;if(x.o)Object.keys(d.o).forEach(function(k){if(Array.isArray(x.o[k]))d.o[k]=x.o[k].filter(function(v){return typeof v==="number"})});return d}
-var S={group:DEF,sched:{},tasks:[],notes:[],saved:[],teachers:{},att:{},atst:{},jsel:{},nset:defNset()};
+function defNset(){return{on:true,o:{"ДЗ":[1440],"Дедлайн":[1440],"Зачёт":[10080,4320,1440],"Экзамен":[10080,4320,1440]},bk:{on:true,d:7},wp:25}}
+function normN(x){var d=defNset();if(!x||typeof x!=="object")return d;if(typeof x.on==="boolean")d.on=x.on;if(x.o)Object.keys(d.o).forEach(function(k){if(Array.isArray(x.o[k]))d.o[k]=x.o[k].filter(function(v){return typeof v==="number"})});
+  if(x.bk&&typeof x.bk==="object"){if(typeof x.bk.on==="boolean")d.bk.on=x.bk.on;if(typeof x.bk.d==="number"&&x.bk.d>0)d.bk.d=x.bk.d}
+  if(typeof x.wp==="number"&&x.wp>0)d.wp=x.wp;return d}
+var S={group:DEF,sched:{},tasks:[],notes:[],saved:[],teachers:{},att:{},atst:{},jsel:{},nset:defNset(),bkBase:Date.now(),bkAsk:""};
 function load(){try{var j=JSON.parse(localStorage.getItem(KEY)||"null");if(!j)return;
   if(j.group)S.group=j.group;
   if(j.sched&&typeof j.sched==="object")S.sched=j.sched;
   else if(Array.isArray(j.lessons)&&j.lessons.length&&j.updated)S.sched[DEF]={lessons:j.lessons,updated:j.updated};
-  S.tasks=j.tasks||[];S.notes=j.notes||[];S.saved=j.saved||[];S.teachers=j.teachers||{};S.peMine=j.peMine||"";S.att=normAtt(j.att);S.atst=j.atst||{};S.jsel=j.jsel||{};S.nset=normN(j.nset);S.lastBk=j.lastBk||0}catch(e){}}
+  S.tasks=j.tasks||[];S.notes=j.notes||[];S.saved=j.saved||[];S.teachers=j.teachers||{};S.peMine=j.peMine||"";S.att=normAtt(j.att);S.atst=j.atst||{};S.jsel=j.jsel||{};S.nset=normN(j.nset);S.lastBk=j.lastBk||0;if(j.bkBase)S.bkBase=j.bkBase;S.bkAsk=j.bkAsk||""}catch(e){}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}schedNotif()}
 /* напоминания iOS: в приложении (NATIVE) список задач отправляется в систему, она присылает уведомления сама, даже при закрытом приложении */
 var NT=null;
@@ -249,13 +251,21 @@ function offLabel(m){
   if(m>=60&&m%60===0){var h=m/60;return h===1?"через час":"через "+h+(h<5?" часа":" часов")}
   return "через "+m+" мин";
 }
+function hasData(){return !!((S.tasks&&S.tasks.length)||(S.notes&&S.notes.length))}
+/* напоминание о копии данных: через N дней после последней копии в 12:00, затем ещё дважды раз в 3 дня; если всё просрочено, то завтра в 12:00 */
+function bkNotifs(items,now){
+  var b=S.nset.bk;if(!b.on||!hasData())return;
+  var base=S.lastBk||S.bkBase||now,n=0,body="Пора сохранить копию данных: «Конспекты» → «Сохранить копию в файл».";
+  for(var i=0;i<3;i++){var d=new Date(base+(b.d+i*3)*864e5);d.setHours(12,0,0,0);if(+d>now+5000){items.push({id:"bk-"+i,title:"Учёба",body:body,at:+d});n++}}
+  if(!n){var t=new Date(now+864e5);t.setHours(12,0,0,0);items.push({id:"bk-next",title:"Учёба",body:body,at:+t})}
+}
 function buildNotifs(){
   var now=Date.now(),items=[];
-  if(!S.nset.on)return items;
-  S.tasks.forEach(function(t){
+  if(S.nset.on)S.tasks.forEach(function(t){
     if(t.done)return;
     (S.nset.o[t.type]||[]).forEach(function(m){var at=t.due-m*6e4;if(at>now+5000)items.push({id:t.id+"-"+m,title:t.type+" · "+t.subj,body:"Срок "+offLabel(m)+": "+t.title+" ("+fmt(t.due)+")",at:at})});
   });
+  bkNotifs(items,now);
   items.sort(function(a,b){return a.at-b.at});
   return items.slice(0,60);
 }
@@ -302,6 +312,21 @@ function renderP(){
   sec.appendChild(tb);
   sec.appendChild(mk("p","note","iPhone позволяет держать не больше 64 запланированных уведомлений, приложение ставит ближайшие 60. Если вы запретили уведомления, включите их в Настройки iPhone → Уведомления → Учёба. Настройки входят в копию данных."));
   box.appendChild(sec);
+
+  function pills(list,isOn,onPick){var row=mk("div","row");row.style.margin="8px 0 0";list.forEach(function(o){var p=mk("button","pill",o[1]);p.type="button";p.setAttribute("aria-pressed",String(isOn(o[0])));p.onclick=function(){onPick(o[0])};row.appendChild(p)});return row}
+  var s2=mk("div","jsec");s2.appendChild(mk("h2","","Копия данных"));
+  var l2=mk("label"),c2=mk("input");l2.style.cssText=lb.style.cssText;c2.type="checkbox";c2.checked=!!S.nset.bk.on;c2.style.cssText=cb.style.cssText;
+  c2.onchange=function(){S.nset.bk.on=c2.checked;save();renderP();renderBk()};
+  l2.appendChild(c2);l2.appendChild(document.createTextNode("Напоминать сохранить копию"));s2.appendChild(l2);
+  s2.appendChild(mk("p","note","Как часто напоминать. Приложение пришлёт уведомление и при открытии предложит сохранить копию в «Файлы» или iCloud. Молча сохранить файл без вашего подтверждения iPhone не позволяет."));
+  var r2=pills([[3,"3 дня"],[7,"1 неделя"],[14,"2 недели"],[30,"Месяц"]],function(v){return S.nset.bk.d===v},function(v){S.nset.bk.d=v;save();renderP();renderBk()});if(!S.nset.bk.on)r2.style.opacity="0.5";s2.appendChild(r2);
+  s2.appendChild(mk("p","note",S.lastBk?"Последняя копия: "+new Date(S.lastBk).toLocaleString("ru-RU"):"Копия ещё не делалась."));
+  box.appendChild(s2);
+
+  var s3=mk("div","jsec");s3.appendChild(mk("h2","","Пропуски"));
+  s3.appendChild(mk("p","note","Предупреждать о предмете, если пропущено не меньше этой доли от уже проведённых часов:"));
+  s3.appendChild(pills([[15,"15%"],[20,"20%"],[25,"25%"],[30,"30%"],[40,"40%"]],function(v){return S.nset.wp===v},function(v){S.nset.wp=v;save();renderP()}));
+  box.appendChild(s3);
 }
 function cur(){return S.sched[S.group]||(S.group===DEF?{lessons:snapshot(),updated:null}:{lessons:[],updated:null})}
 function $(id){return document.getElementById(id)}
@@ -808,10 +833,47 @@ function parseAtst(text){
   while((m=re.exec(flat)))rows.push({s:m[2],g:m[3]});
   return rows;
 }
+/* график по точкам {t,v}: линия с подписями крайних значений и дат */
+function shortD(t){var d=new Date(t);return ("0"+d.getDate()).slice(-2)+"."+("0"+(d.getMonth()+1)).slice(-2)}
+function lineChart(pts,o){
+  var NS="http://www.w3.org/2000/svg",W=320,H=140,PL=34,PR=12,PT=12,PB=26;
+  var s=document.createElementNS(NS,"svg");s.setAttribute("viewBox","0 0 "+W+" "+H);s.setAttribute("role","img");s.setAttribute("aria-label",o.label);s.style.cssText="width:100%;height:auto;display:block;margin:6px 0";
+  var xs=pts.map(function(p){return p.t}),vs=pts.map(function(p){return p.v});
+  var x0=Math.min.apply(null,xs),x1=Math.max.apply(null,xs),lo=o.min!=null?o.min:Math.min.apply(null,vs),hi=o.max!=null?o.max:Math.max.apply(null,vs);
+  if(hi<=lo)hi=lo+1;
+  function X(t){return PL+(x1===x0?0:(t-x0)/(x1-x0))*(W-PL-PR)}
+  function Y(v){return H-PB-(v-lo)/(hi-lo)*(H-PT-PB)}
+  function el(n,a,txt){var e=document.createElementNS(NS,n);Object.keys(a).forEach(function(k){e.setAttribute(k,a[k])});if(txt!=null)e.textContent=txt;s.appendChild(e);return e}
+  el("line",{x1:PL,y1:Y(lo),x2:W-PR,y2:Y(lo),style:"stroke:var(--ln);stroke-width:1"});
+  el("line",{x1:PL,y1:Y(hi),x2:W-PR,y2:Y(hi),style:"stroke:var(--ln);stroke-width:1;stroke-dasharray:3 3"});
+  el("text",{x:PL-4,y:Y(hi)+4,"text-anchor":"end","font-size":"11",style:"fill:var(--mut)"},o.fmt(hi));
+  el("text",{x:PL-4,y:Y(lo)+4,"text-anchor":"end","font-size":"11",style:"fill:var(--mut)"},o.fmt(lo));
+  el("text",{x:PL,y:H-8,"text-anchor":"start","font-size":"11",style:"fill:var(--mut)"},shortD(x0));
+  el("text",{x:W-PR,y:H-8,"text-anchor":"end","font-size":"11",style:"fill:var(--mut)"},shortD(x1));
+  el("polyline",{points:pts.map(function(p){return X(p.t).toFixed(1)+","+Y(p.v).toFixed(1)}).join(" "),fill:"none","stroke-width":"2.5","stroke-linejoin":"round","stroke-linecap":"round",style:"stroke:"+o.color});
+  pts.forEach(function(p,i){el("circle",{cx:X(p.t).toFixed(1),cy:Y(p.v).toFixed(1),r:i===pts.length-1?"4.5":"3",style:"fill:"+o.color})});
+  var last=pts[pts.length-1];
+  el("text",{x:Math.min(W-PR,Math.max(PL,X(last.t))),y:Math.max(PT+8,Y(last.v)-8),"text-anchor":"end","font-size":"12","font-weight":"700",style:"fill:var(--ink)"},o.fmt(last.v));
+  return s;
+}
+function chartBlock(title,hist,o){
+  var wrap=mk("div","nxt");wrap.appendChild(mk("b","",title));
+  var pts=(hist||[]).filter(function(p){return p.v!=null});
+  if(pts.length<2){wrap.appendChild(mk("div","note","График появится после следующей вставки таблицы: нужно хотя бы две записи. Сейчас записей: "+pts.length+"."));return wrap}
+  wrap.appendChild(lineChart(pts,o));
+  wrap.appendChild(mk("div","note","Точка добавляется при каждой вставке таблицы из ЛК, а не по неделям."));
+  return wrap;
+}
 function viewAtt(box,data,sel){
   if(!data||!data.rows.length){box.appendChild(mk("p","note","За этот семестр данных нет. Откройте «Обновить из ЛК» и вставьте таблицу."));return}
   var tm=0,th=0;data.rows.forEach(function(r){if(r.m!=null&&r.h!=null){tm+=r.m;th+=r.h}});
   box.appendChild(mk("div","nowbox calm","Пропущено "+tm+" ч из "+th+" проведённых ("+(th?Math.round(tm*100/th):0)+"%)"));
+  /* предупреждение: предметы, где пропущена доля проведённых часов не меньше порога */
+  var sm={},so=[];data.rows.forEach(function(r){if(r.m==null||r.h==null)return;if(!sm[r.s]){sm[r.s]={m:0,h:0};so.push(r.s)}sm[r.s].m+=r.m;sm[r.s].h+=r.h});
+  var wl=so.filter(function(s){return sm[s].m>0&&sm[s].h>0&&sm[s].m*100/sm[s].h>=S.nset.wp}).sort(function(a,b){return sm[b].m/sm[b].h-sm[a].m/sm[a].h});
+  if(wl.length){var wb=mk("div","msg bad");wb.appendChild(mk("b","","Много пропусков (от "+S.nset.wp+"% проведённых часов):"));wl.forEach(function(s){var d=mk("div","",s+": "+sm[s].m+" из "+sm[s].h+" ч ("+Math.round(sm[s].m*100/sm[s].h)+"%)");d.style.marginTop="4px";wb.appendChild(d)});box.appendChild(wb)}
+  else box.appendChild(mk("p","note","Предметов с долей пропусков от "+S.nset.wp+"% нет. Порог меняется во вкладке «Настройки»."));
+  box.appendChild(chartBlock("Доля пропусков, % от проведённых часов",data.hist,{color:"var(--warn)",min:0,label:"График доли пропусков",fmt:function(v){return Math.round(v)+"%"}}));
   if(data.prev){
     var pm={},ch=[];data.prev.rows.forEach(function(r){pm[r.s+"|"+r.t]=r.m||0});
     data.rows.forEach(function(r){var d=(r.m||0)-(pm[r.s+"|"+r.t]||0);if(d)ch.push(r.s+" ("+r.t.toLowerCase()+"): "+(d>0?"+":"")+d+" ч")});
@@ -842,6 +904,9 @@ function viewAtst(box,data,sel){
   data.rows.forEach(function(r){if(!cnt[r.g]){cnt[r.g]=0;order.push(r.g)}cnt[r.g]++;var v=GV[r.g.toLowerCase()];if(v){num++;sum+=v}});
   var sm=mk("div","nowbox calm",(num?"Средний балл по выставленным оценкам: "+(sum/num).toFixed(1).replace(".",",")+". ":"")+order.map(function(g){return g+": "+cnt[g]}).join(" · "));
   box.appendChild(sm);
+  var badRows=data.rows.filter(function(r){return /Не допущен|Не удовл|Неудовл|Не зачт|Незач/i.test(r.g)});
+  if(badRows.length){var wb=mk("div","msg bad");wb.appendChild(mk("b","","Нужно обратить внимание:"));badRows.forEach(function(r){var d=mk("div","",r.s+": "+r.g);d.style.marginTop="4px";wb.appendChild(d)});box.appendChild(wb)}
+  box.appendChild(chartBlock("Средний балл по выставленным оценкам",data.hist,{color:"var(--acl)",min:2,max:5,label:"График среднего балла",fmt:function(v){return v.toFixed(1).replace(".",",")}}));
   if(data.prev){
     var pm={},ch=[];data.prev.rows.forEach(function(r){pm[r.s]=r.g});
     data.rows.forEach(function(r){if(pm[r.s]!==undefined&&pm[r.s]!==r.g)ch.push(r.s+": "+pm[r.s]+" → "+r.g);else if(pm[r.s]===undefined)ch.push(r.s+": "+r.g+" (новая строка)")});
@@ -864,8 +929,10 @@ function viewAtst(box,data,sel){
   box.appendChild(mk("p","note","Обновлено: "+new Date(data.updated).toLocaleString("ru-RU")));
 }
 var JSEC=[
-  {id:"att",title:"Пропуски занятий",tab:"Пропуски",num:false,parse:parseAtt,view:viewAtt,hint:"таблицу «Пропуски занятий»"},
-  {id:"atst",title:"Результаты промежуточной аттестации",tab:"Аттестация",num:true,parse:parseAtst,view:viewAtst,hint:"таблицу «Результаты промежуточной аттестации»"}
+  {id:"att",title:"Пропуски занятий",tab:"Пропуски",num:false,parse:parseAtt,view:viewAtt,hint:"таблицу «Пропуски занятий»",
+    snap:function(rows,t){var m=0,h=0;rows.forEach(function(r){if(r.m!=null&&r.h!=null){m+=r.m;h+=r.h}});return{t:t,v:h?m*100/h:0,m:m,h:h}}},
+  {id:"atst",title:"Результаты промежуточной аттестации",tab:"Аттестация",num:true,parse:parseAtst,view:viewAtst,hint:"таблицу «Результаты промежуточной аттестации»",
+    snap:function(rows,t){var s=0,n=0;rows.forEach(function(r){var v=GV[r.g.toLowerCase()];if(v){s+=v;n++}});return{t:t,v:n?s/n:null,n:n}}}
 ];
 function jStore(def){return def.id==="att"?S.att:S.atst}
 function jKey(def,sem,n){return def.num?sem+"|"+n:sem}
@@ -907,7 +974,9 @@ function buildSec(def){
   f.onsubmit=function(e){e.preventDefault();var rows=def.parse(ta.value);
     if(!rows.length){alert("Не нашёл в тексте нужную таблицу. Проверьте, что вставляете её в тот раздел, и скопируйте целиком, вместе со строками дисциплин.");return}
     var st=jStore(def),k=jKey(def,sel.sem,sel.n),old=st[k];
-    st[k]={updated:Date.now(),rows:rows,prev:old?{updated:old.updated,rows:old.rows}:null};save();renderJ()};
+    var now=Date.now(),hist=old?(old.hist&&old.hist.length?old.hist.slice():[def.snap(old.rows,old.updated)]):[];
+    hist.push(def.snap(rows,now));
+    st[k]={updated:now,rows:rows,prev:old?{updated:old.updated,rows:old.rows}:null,hist:hist.slice(-60)};save();renderJ()};
   sec.appendChild(d);
   return sec;
 }
@@ -935,8 +1004,8 @@ function showTab(){
 document.querySelectorAll("[data-tab]").forEach(function(b){b.onclick=function(){HT=b.dataset.tab;showTab()}});
 document.querySelectorAll("[data-nav]").forEach(function(b){b.onclick=function(){NAV=b.dataset.nav;showTab()}});
 function renderBk(){
-  var has=(S.tasks&&S.tasks.length)||(S.notes&&S.notes.length),age=S.lastBk?(Date.now()-S.lastBk)/864e5:1e9;
-  var w=$("bkw");w.hidden=!(has&&age>=7);if(w.hidden)return;
+  var has=hasData(),age=S.lastBk?(Date.now()-S.lastBk)/864e5:1e9;
+  var w=$("bkw");w.hidden=!(has&&S.nset.bk.on&&age>=S.nset.bk.d);if(w.hidden)return;
   $("bkt").textContent=S.lastBk?"Копию данных не делали "+Math.floor(age)+" дн. Сохраните её в «Файлы» или iCloud, чтобы данные не пропали.":"Копия данных ещё не делалась. Сохраните её в «Файлы» или iCloud, чтобы данные не пропали."}
 $("bkb").onclick=function(){$("bk").click()};
 $("today").onclick=function(){sel=startDay();renderDays()};
@@ -946,7 +1015,12 @@ $("gf").onsubmit=function(e){e.preventDefault();var v=$("gin").value.replace(/\s
   S.group=v;save();$("gin").value="";$("gbox").open=false;renderDays();if(navigator.onLine)refresh()};
 if("Notification" in window&&Notification.permission==="default"){$("notif").hidden=false;$("notif").onclick=function(){Notification.requestPermission().then(function(){$("notif").hidden=true})}}
 load();renderDays();renderTasks();renderNotes();renderBk();notifyDue();
-if(window.NATIVE){$("tnote").textContent="Уведомления приходят от приложения, даже когда оно закрыто. Когда их присылать, выбирается во вкладке «Настройки». Разрешите уведомления, когда iPhone спросит.";schedNotif()}
+if(window.NATIVE){$("tnote").textContent="Уведомления приходят от приложения, даже когда оно закрыто. Когда их присылать, выбирается во вкладке «Настройки». Разрешите уведомления, когда iPhone спросит.";save()}
+/* при открытии: если копию давно не делали, предлагаем сохранить (не чаще раза в день) */
+setTimeout(function(){try{
+  var b=S.nset.bk,age=(Date.now()-(S.lastBk||S.bkBase||Date.now()))/864e5,day=dkey(new Date());
+  if(window.NATIVE&&b.on&&hasData()&&age>=b.d&&S.bkAsk!==day){S.bkAsk=day;save();if(confirm("Копию данных давно не делали. Сохранить её сейчас в «Файлы»?"))$("bk").click()}
+}catch(e){}},1500);
 setInterval(function(){renderDays();renderTasks();notifyDue()},60000);
 if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js").catch(function(){})}catch(e){}}
 if(navigator.onLine)refresh();
