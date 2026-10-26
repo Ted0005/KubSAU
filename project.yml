@@ -11,6 +11,7 @@ targets:
       - path: App.swift
       - path: index.html
         buildPhase: resources
+      - path: Assets.xcassets
     info:
       path: Info.plist
       properties:
@@ -29,6 +30,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ru.arman.uchyoba
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGNING_ALLOWED: "NO"
         CODE_SIGNING_REQUIRED: "NO"
         CODE_SIGN_IDENTITY: ""
