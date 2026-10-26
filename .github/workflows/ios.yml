@@ -1,0 +1,35 @@
+name: iOS ipa
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Генерация проекта
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Сборка без подписи
+        run: |
+          xcodebuild -project Uchyoba.xcodeproj -target Uchyoba \
+            -configuration Release -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Упаковка в ipa
+        run: |
+          mkdir -p out/Payload
+          cp -R build/Release-iphoneos/Uchyoba.app out/Payload/
+          cd out && zip -qry Uchyoba.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Uchyoba-ipa
+          path: out/Uchyoba.ipa
