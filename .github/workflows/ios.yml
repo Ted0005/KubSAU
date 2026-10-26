@@ -39,9 +39,15 @@ jobs:
       - name: Иконки в приложение
         run: |
           APP=build/Release-iphoneos/Uchyoba.app
-          ls Icons
+          xcrun actool Assets.xcassets --compile "$APP" \
+            --platform iphoneos --minimum-deployment-target 15.0 \
+            --app-icon AppIcon --target-device iphone \
+            --output-partial-info-plist "$RUNNER_TEMP/icons.plist"
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleIcons" "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Merge $RUNNER_TEMP/icons.plist" "$APP/Info.plist"
           cp Icons/*.png "$APP/"
           ls "$APP"
+          plutil -p "$APP/Info.plist" | grep -i -A12 icon
 
       - name: Упаковка в ipa
         run: |
