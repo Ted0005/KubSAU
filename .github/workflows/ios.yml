@@ -16,8 +16,10 @@ jobs:
           mkdir -p "$D" Icons
           SRC=$(ls icon.* | head -1)
           sips -z 1024 1024 -s format png "$SRC" --out "$D/icon.png"
-          sips -z 120 120 -s format png "$SRC" --out "Icons/UchyobaIcon60x60@2x.png"
-          sips -z 180 180 -s format png "$SRC" --out "Icons/UchyobaIcon60x60@3x.png"
+          for s in "20 40 2" "20 60 3" "29 58 2" "29 87 3" "40 80 2" "40 120 2" "60 120 2" "60 180 3"; do
+            set -- $s
+            sips -z $2 $2 -s format png "$SRC" --out "Icons/UchyobaIcon$1x$1@$3x.png"
+          done
           printf '{"info":{"author":"xcode","version":1}}' > Assets.xcassets/Contents.json
           printf '{"images":[{"filename":"icon.png","idiom":"universal","platform":"ios","size":"1024x1024"}],"info":{"author":"xcode","version":1}}' > "$D/Contents.json"
 
@@ -37,8 +39,8 @@ jobs:
       - name: Иконки в приложение
         run: |
           APP=build/Release-iphoneos/Uchyoba.app
-          ls -R Icons Assets.xcassets
-          cp Icons/UchyobaIcon60x60@2x.png Icons/UchyobaIcon60x60@3x.png "$APP/"
+          ls Icons
+          cp Icons/*.png "$APP/"
           ls "$APP"
 
       - name: Упаковка в ipa
