@@ -1,0 +1,77 @@
+name: iOS ipa with widget
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Иконка приложения
+        run: |
+          D=Assets.xcassets/AppIcon.appiconset
+          mkdir -p "$D" Icons
+          SRC=$(ls icon.* | head -1)
+          sips -z 1024 1024 -s format png "$SRC" --out "$D/icon.png"
+          for s in "20 40 2" "20 60 3" "29 58 2" "29 87 3" "40 80 2" "40 120 2" "60 120 2" "60 180 3"; do
+            set -- $s
+            sips -z $2 $2 -s format png "$SRC" --out "Icons/UchyobaIcon$1x$1@$3x.png"
+          done
+          printf '{"info":{"author":"xcode","version":1}}' > Assets.xcassets/Contents.json
+          printf '{"images":[{"filename":"icon.png","idiom":"universal","platform":"ios","size":"1024x1024"}],"info":{"author":"xcode","version":1}}' > "$D/Contents.json"
+
+      - name: Генерация проекта
+        run: |
+          brew install xcodegen
+          xcodegen generate --spec project-widget.yml
+
+      - name: Сборка без подписи
+        run: |
+          xcodebuild -project Uchyoba.xcodeproj -target Uchyoba \
+            -configuration Release -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Иконки в приложение
+        run: |
+          APP=build/Release-iphoneos/Uchyoba.app
+          xcrun actool Assets.xcassets --compile "$APP" \
+            --platform iphoneos --minimum-deployment-target 15.0 \
+            --app-icon AppIcon --target-device iphone \
+            --output-partial-info-plist "$RUNNER_TEMP/icons.plist"
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleIcons" "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Merge $RUNNER_TEMP/icons.plist" "$APP/Info.plist"
+          cp Icons/*.png "$APP/"
+          ls -R "$APP" | head -60
+
+      - name: Общее хранилище (App Group)
+        continue-on-error: true
+        run: |
+          APP=build/Release-iphoneos/Uchyoba.app
+          cat > "$RUNNER_TEMP/ent.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>com.apple.security.application-groups</key>
+          <array><string>group.ru.arman.uchyoba</string></array>
+          </dict></plist>
+          PLIST
+          brew install ldid
+          ldid -S"$RUNNER_TEMP/ent.plist" "$APP/Uchyoba"
+          ldid -S"$RUNNER_TEMP/ent.plist" "$APP/PlugIns/UchyobaWidget.appex/UchyobaWidget"
+          ldid -e "$APP/Uchyoba"
+
+      - name: Упаковка в ipa
+        run: |
+          mkdir -p out/Payload
+          cp -R build/Release-iphoneos/Uchyoba.app out/Payload/
+          cd out && zip -qry Uchyoba-widget.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Uchyoba-widget-ipa
+          path: out/Uchyoba-widget.ipa
