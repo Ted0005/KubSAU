@@ -20,8 +20,8 @@ h1{font:700 34px/1.1 system-ui,-apple-system,sans-serif;margin:8px 0 2px}
 .pill[aria-pressed="true"]{border-color:var(--ac);background:var(--soft);font-weight:600}
 .tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--acl)}
 .bnav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;background:var(--sf);border-top:1px solid var(--ln);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px))}
-.bnav button{flex:1;border:0;background:none;color:var(--mut);font:inherit;font-size:12px;font-weight:600;padding:4px 0;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer}
-.bnav button span{font-size:22px;line-height:1;padding:4px 18px;border-radius:14px}
+.bnav button{flex:1;min-width:0;border:0;background:none;color:var(--mut);font:inherit;font-size:10px;font-weight:600;padding:4px 0;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:clip;letter-spacing:-.2px}
+.bnav button span{font-size:22px;line-height:1;padding:4px 10px;border-radius:14px}
 .bnav button[aria-selected="true"]{color:var(--acl)}
 .bnav button[aria-selected="true"] span{background:var(--ac)}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--ac);outline-offset:2px}
@@ -168,10 +168,14 @@ summary{cursor:pointer;font-weight:600}
     <button class="add" type="submit">Сохранить конспект</button>
   </form>
   <div class="row"><select id="nfilter" aria-label="Предмет"></select></div>
-  <input id="nsearch" type="search" placeholder="Поиск по конспектам" style="margin-bottom:12px">
+  <input id="nsearch" type="search" placeholder="Поиск по конспектам и тексту на фото" style="margin-bottom:12px">
+  <button class="ghost" id="ocrall" type="button" hidden style="margin-bottom:12px"></button>
   <div id="nlist"></div>
   <div class="row" style="margin-top:16px"><button class="ghost" id="bk">Сохранить копию в файл</button><button class="ghost" id="rs">Восстановить из файла</button><input type="file" id="rsf" accept=".json,application/json" hidden></div>
   <p class="note">Всё хранится только на этом устройстве: конспекты, задачи и фото. Safari может очистить данные сайта, если им долго не пользоваться, поэтому время от времени сохраняйте копию в файл (в «Файлы» или iCloud). В копию входят и фото.</p>
+</section>
+<section id="e" hidden>
+  <div id="ebox"></div>
 </section>
 <section id="j" hidden>
   <div id="jbox"></div>
@@ -196,6 +200,7 @@ summary{cursor:pointer;font-weight:600}
 <nav class="bnav" role="tablist">
   <button role="tab" data-nav="home" aria-selected="true"><span>🏠</span>Главная</button>
   <button role="tab" data-nav="n" aria-selected="false"><span>📝</span>Конспекты</button>
+  <button role="tab" data-nav="e" aria-selected="false"><span>🎓</span>Экзамены</button>
   <button role="tab" data-nav="j" aria-selected="false"><span>📊</span>Успеваемость</button>
   <button role="tab" data-nav="p" aria-selected="false"><span>⚙️</span>Настройки</button>
 </nav>
@@ -236,12 +241,12 @@ function defNset(){return{on:true,o:{"ДЗ":[1440],"Дедлайн":[1440],"За
 function normN(x){var d=defNset();if(!x||typeof x!=="object")return d;if(typeof x.on==="boolean")d.on=x.on;if(x.o)Object.keys(d.o).forEach(function(k){if(Array.isArray(x.o[k]))d.o[k]=x.o[k].filter(function(v){return typeof v==="number"})});
   if(x.bk&&typeof x.bk==="object"){if(typeof x.bk.on==="boolean")d.bk.on=x.bk.on;if(typeof x.bk.d==="number"&&x.bk.d>0)d.bk.d=x.bk.d}
   if(typeof x.wp==="number"&&x.wp>0)d.wp=x.wp;return d}
-var S={group:DEF,sched:{},tasks:[],notes:[],saved:[],teachers:{},att:{},atst:{},jsel:{},nset:defNset(),bkBase:Date.now(),bkAsk:""};
+var S={group:DEF,sched:{},tasks:[],notes:[],saved:[],teachers:{},att:{},atst:{},jsel:{},nset:defNset(),bkBase:Date.now(),bkAsk:"",exams:[]};
 function load(){try{var j=JSON.parse(localStorage.getItem(KEY)||"null");if(!j)return;
   if(j.group)S.group=j.group;
   if(j.sched&&typeof j.sched==="object")S.sched=j.sched;
   else if(Array.isArray(j.lessons)&&j.lessons.length&&j.updated)S.sched[DEF]={lessons:j.lessons,updated:j.updated};
-  S.tasks=j.tasks||[];S.notes=j.notes||[];S.saved=j.saved||[];S.teachers=j.teachers||{};S.peMine=j.peMine||"";S.att=normAtt(j.att);S.atst=j.atst||{};S.jsel=j.jsel||{};S.nset=normN(j.nset);S.lastBk=j.lastBk||0;if(j.bkBase)S.bkBase=j.bkBase;S.bkAsk=j.bkAsk||""}catch(e){}}
+  S.tasks=j.tasks||[];S.notes=j.notes||[];S.saved=j.saved||[];S.teachers=j.teachers||{};S.peMine=j.peMine||"";S.att=normAtt(j.att);S.atst=j.atst||{};S.jsel=j.jsel||{};S.nset=normN(j.nset);S.exams=Array.isArray(j.exams)?j.exams:[];S.lastBk=j.lastBk||0;if(j.bkBase)S.bkBase=j.bkBase;S.bkAsk=j.bkAsk||""}catch(e){}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}schedNotif()}
 /* напоминания iOS: в приложении (NATIVE) список задач отправляется в систему, она присылает уведомления сама, даже при закрытом приложении */
 var NT=null;
@@ -588,24 +593,60 @@ var VW=null;
 function openViewer(n,id,url){VW={n:n,id:id};$("vimg").src=url;$("viewer").hidden=false}
 function closeViewer(){$("viewer").hidden=true;$("vimg").removeAttribute("src");VW=null}
 $("vclose").onclick=closeViewer;
-$("vdel").onclick=function(){if(!VW||!confirm("Удалить это фото?"))return;var w=VW;w.n.photos=(w.n.photos||[]).filter(function(x){return x!==w.id});dbDel(w.id).catch(function(){});save();closeViewer();renderNotes()};
+$("vdel").onclick=function(){if(!VW||!confirm("Удалить это фото?"))return;var w=VW;w.n.photos=(w.n.photos||[]).filter(function(x){return x!==w.id});if(w.n.ocr)delete w.n.ocr[w.id];dbDel(w.id).catch(function(){});save();closeViewer();renderNotes()};
 
+/* распознавание текста на фото конспектов: делает iOS (Vision) в приложении, результат хранится в конспекте и участвует в поиске */
+function canOcr(){return !!(window.NATIVE&&window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.ocr)}
+function ocrPhoto(id){
+  return dbGet(id).then(function(b){return b?toDataURL(b):null}).then(function(u){
+    if(!u)return null;
+    return window.webkit.messageHandlers.ocr.postMessage({id:id,data:u.slice(u.indexOf(",")+1)});
+  }).then(function(t){return typeof t==="string"?t:null}).catch(function(){return null});
+}
+function ocrPending(n){return (n.photos||[]).filter(function(id){return !n.ocr||n.ocr[id]===undefined})}
+function ocrNote(n){
+  if(!canOcr())return Promise.resolve(0);
+  var ids=ocrPending(n),done=0;n.ocr=n.ocr||{};
+  return ids.reduce(function(p,id){return p.then(function(){return ocrPhoto(id).then(function(t){if(t!==null){n.ocr[id]=t;done++}})})},Promise.resolve()).then(function(){save();return done});
+}
+function ocrText(n){return Object.keys(n.ocr||{}).map(function(k){return n.ocr[k]}).join(" ")}
+function snippet(text,q){
+  var i=text.toLowerCase().indexOf(q);if(i<0)return "";
+  var a=Math.max(0,i-30),b=Math.min(text.length,i+q.length+50);
+  return (a>0?"…":"")+text.slice(a,b).replace(/\s+/g," ")+(b<text.length?"…":"");
+}
+var ocrBusy=false;
 /* конспекты */
 function renderNotes(){
   var box=$("nlist");box.textContent="";var f=$("nfilter").value,q=$("nsearch").value.trim().toLowerCase();
-  var ls=S.notes.filter(function(n){return(f==="Все предметы"||n.subj===f)&&(!q||(n.title+" "+n.text+" "+n.topic).toLowerCase().indexOf(q)>=0)});
+  var ob=$("ocrall"),pend=0;S.notes.forEach(function(n){pend+=ocrPending(n).length});
+  ob.hidden=!(canOcr()&&pend>0);if(!ob.hidden&&!ocrBusy)ob.textContent="Распознать текст на фото ("+pend+")";
+  var ls=S.notes.filter(function(n){return(f==="Все предметы"||n.subj===f)&&(!q||(n.title+" "+n.text+" "+n.topic+" "+ocrText(n)).toLowerCase().indexOf(q)>=0)});
   ls.sort(function(a,b){return a.subj.localeCompare(b.subj,"ru")||String(a.topic).localeCompare(String(b.topic),"ru",{numeric:true})});
   if(!ls.length){box.appendChild(mk("p","note",S.notes.length?"Ничего не найдено.":"Конспектов пока нет."));return}
   ls.forEach(function(n){
-    var np=(n.photos||[]).length,d=document.createElement("details"),s=mk("summary","",n.subj+(n.topic?" · тема "+n.topic:"")+" · "+n.title+(np?" · фото: "+np:""));
+    var np=(n.photos||[]).length,d=document.createElement("details"),otx=ocrText(n),inOcr=!!(q&&otx.toLowerCase().indexOf(q)>=0&&(n.title+" "+n.text+" "+n.topic).toLowerCase().indexOf(q)<0);
+    var s=mk("summary","",n.subj+(n.topic?" · тема "+n.topic:"")+" · "+n.title+(np?" · фото: "+np:"")+(inOcr?" · совпадение в тексте фото":""));
     d.appendChild(s);if(n.text)d.appendChild(mk("div","body",n.text));
+    if(inOcr)d.appendChild(mk("div","note","Найдено на фото: "+snippet(otx,q)));
     var ph=mk("div","ph"),filled=false;d.appendChild(ph);
     function fill(){if(filled)return;filled=true;(n.photos||[]).forEach(function(id){var im=mk("img");im.alt="Фото конспекта";ph.appendChild(im);dbGet(id).then(function(b){if(b){im.src=URL.createObjectURL(b);im.onclick=function(){openViewer(n,id,im.src)}}else{im.alt="Фото не найдено"}}).catch(function(){})})}
-    if(openN[n.id]){d.open=true;fill()}
+    if(openN[n.id]||inOcr){d.open=true;fill()}
     d.addEventListener("toggle",function(){openN[n.id]=d.open;if(d.open)fill()});
     var ad=mk("label","addph","Добавить фото"),fi=mk("input");fi.type="file";fi.accept="image/*";fi.multiple=true;fi.hidden=true;
-    fi.onchange=function(){if(!fi.files.length)return;addPhotos(n,fi.files).then(function(bad){save();renderNotes();if(bad)alert("Не удалось добавить фото: "+bad+" шт.")})};
+    fi.onchange=function(){if(!fi.files.length)return;addPhotos(n,fi.files).then(function(bad){save();renderNotes();if(bad)alert("Не удалось добавить фото: "+bad+" шт.");ocrNote(n).then(function(c){if(c)renderNotes()})})};
     ad.appendChild(fi);d.appendChild(ad);
+    var oids=Object.keys(n.ocr||{}).filter(function(id){return (n.photos||[]).indexOf(id)>=0&&n.ocr[id]});
+    if(oids.length){
+      var od=document.createElement("details");od.appendChild(mk("summary","","Текст с фото (распознан автоматически)"));
+      oids.forEach(function(id){var lb=mk("label","","Фото "+((n.photos||[]).indexOf(id)+1)),ta=mk("textarea");ta.rows=4;ta.value=n.ocr[id];ta.onchange=function(){n.ocr[id]=ta.value;save()};lb.appendChild(ta);od.appendChild(lb)});
+      d.appendChild(od);
+    }
+    if(canOcr()&&ocrPending(n).length){
+      var ob1=mk("button","ghost","Распознать текст на фото");ob1.type="button";ob1.style.marginRight="8px";
+      ob1.onclick=function(){ob1.disabled=true;ob1.textContent="Распознаю…";ocrNote(n).then(function(){renderNotes()})};
+      d.appendChild(ob1);
+    }
     var x=mk("button","ghost","Удалить");x.onclick=function(){if(confirm("Удалить конспект вместе с фото?")){(n.photos||[]).forEach(function(id){dbDel(id).catch(function(){})});S.notes=S.notes.filter(function(z){return z.id!==n.id});save();renderNotes()}};
     d.appendChild(x);box.appendChild(d);
   });
@@ -613,14 +654,19 @@ function renderNotes(){
 $("nf").onsubmit=function(e){e.preventDefault();if(!$("ntitle").value.trim())return;
   var n={id:Date.now()+"",subj:$("nsubj").value,topic:$("ntopic").value.trim(),title:$("ntitle").value.trim(),text:$("ntext").value,photos:[]},btn=$("nf").querySelector(".add");
   btn.disabled=true;btn.textContent="Сохраняю…";
-  addPhotos(n,$("nphoto").files).then(function(bad){S.notes.push(n);save();$("ntitle").value="";$("ntext").value="";$("nphoto").value="";btn.disabled=false;btn.textContent="Сохранить конспект";renderNotes();if(bad)alert("Не удалось добавить фото: "+bad+" шт. Конспект сохранён.")})};
+  addPhotos(n,$("nphoto").files).then(function(bad){S.notes.push(n);save();$("ntitle").value="";$("ntext").value="";$("nphoto").value="";btn.disabled=false;btn.textContent="Сохранить конспект";renderNotes();if(bad)alert("Не удалось добавить фото: "+bad+" шт. Конспект сохранён.");ocrNote(n).then(function(c){if(c)renderNotes()})})};
+$("ocrall").onclick=function(){
+  if(ocrBusy)return;ocrBusy=true;var b=$("ocrall");b.disabled=true;
+  var list=S.notes.filter(function(n){return ocrPending(n).length>0}),i=0;
+  list.reduce(function(p,n){return p.then(function(){i++;b.textContent="Распознаю… конспект "+i+" из "+list.length;return ocrNote(n)})},Promise.resolve()).then(function(){ocrBusy=false;b.disabled=false;renderNotes()});
+};
 $("nfilter").onchange=renderNotes;$("nsearch").oninput=renderNotes;
 /* копия данных в файл: задачи, конспекты и фото (фото как data-URL) */
 function toDataURL(b){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result)};r.onerror=function(){rej(r.error)};r.readAsDataURL(b)})}
 function backupText(){
   var photos={},ids=[];S.notes.forEach(function(n){(n.photos||[]).forEach(function(id){ids.push(id)})});
   return ids.reduce(function(p,id){return p.then(function(){return dbGet(id).then(function(b){if(b)return toDataURL(b).then(function(u){photos[id]=u})}).catch(function(){})})},Promise.resolve())
-    .then(function(){return JSON.stringify({v:3,date:Date.now(),tasks:S.tasks,notes:S.notes,saved:S.saved,teachers:S.teachers,peMine:S.peMine,att:S.att,atst:S.atst,jsel:S.jsel,nset:S.nset,photos:photos})});
+    .then(function(){return JSON.stringify({v:3,date:Date.now(),tasks:S.tasks,notes:S.notes,saved:S.saved,teachers:S.teachers,peMine:S.peMine,att:S.att,atst:S.atst,jsel:S.jsel,nset:S.nset,exams:S.exams,photos:photos})});
 }
 function saveFile(name,text){
   if(window.NATIVE&&window.webkit&&window.webkit.messageHandlers.saveFile)return window.webkit.messageHandlers.saveFile.postMessage({name:name,text:text}).then(function(ok){return !!ok}).catch(function(){return false});
@@ -636,7 +682,7 @@ $("rsf").onchange=function(){var f=this.files[0];this.value="";if(!f)return;
     if(!j||(!j.tasks&&!j.notes)){alert("Это не копия данных приложения.");return}
     if(!confirm("Заменить текущие задачи и конспекты данными из файла?"))return;
     Object.keys(j.photos||{}).reduce(function(p,id){return p.then(function(){return fetch(j.photos[id]).then(function(x){return x.blob()}).then(function(b){return dbPut(id,b)}).catch(function(){})})},Promise.resolve()).then(function(){
-      S.tasks=j.tasks||[];S.notes=j.notes||[];if(j.saved)S.saved=j.saved;if(j.teachers)S.teachers=j.teachers;if(j.peMine)S.peMine=j.peMine;if(j.att)S.att=normAtt(j.att);if(j.atst)S.atst=j.atst;if(j.jsel)S.jsel=j.jsel;if(j.nset)S.nset=normN(j.nset);save();renderTasks();renderDays();renderNotes();renderSaved();alert("Данные восстановлены.")})};
+      S.tasks=j.tasks||[];S.notes=j.notes||[];if(j.saved)S.saved=j.saved;if(j.teachers)S.teachers=j.teachers;if(j.peMine)S.peMine=j.peMine;if(j.att)S.att=normAtt(j.att);if(j.atst)S.atst=j.atst;if(j.jsel)S.jsel=j.jsel;if(j.nset)S.nset=normN(j.nset);if(Array.isArray(j.exams))S.exams=j.exams;save();renderTasks();renderDays();renderNotes();renderSaved();alert("Данные восстановлены.")})};
   r.readAsText(f)};
 
 /* поиск: группа и аудитория берутся с сайта (type_schedule=1 и 3), преподаватель ищется по уже загруженным расписаниям */
@@ -1007,17 +1053,98 @@ function renderJ(){
   box.appendChild(tb);box.appendChild(buildSec(JSEC[JT]));
 }
 
+/* подготовка к зачётам и экзаменам: список вопросов (билетов), отметки «выучил», готовность в %, тренировка */
+var openE={},TR={};
+function parseQs(text){return String(text||"").split(/\r?\n/).map(function(l){return l.replace(/^\s*(?:№\s*)?\d{1,3}\s*[.)\-–:]\s*/,"").trim()}).filter(function(l){return l.length>0})}
+function examStat(e){var n=e.qs.length,d=0;e.qs.forEach(function(q){if(q.done)d++});return{n:n,d:d,p:n?Math.round(d*100/n):0}}
+function examLeft(e){
+  if(!e.date)return "без даты";
+  var ms=e.date-Date.now();
+  if(ms<0)return "дата прошла";
+  if(ms>=864e5)return "через "+Math.ceil(ms/864e5)+" дн.";
+  return "через "+Math.max(1,Math.ceil(ms/36e5))+" ч";
+}
+function toLocalInput(ms){var d=new Date(ms);return dkey(d)+"T"+("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}
+function syncExamTask(e){
+  var t=S.tasks.filter(function(x){return x.id===e.taskId})[0];
+  if(t&&e.date){t.due=e.date;t.sent=0;t.subj=e.subj;t.type=e.kind}
+}
+function nextQ(e){
+  var o=e.qs.filter(function(q){return !q.done&&q.id!==TR[e.id]});
+  if(!o.length)o=e.qs.filter(function(q){return !q.done});
+  if(!o.length){delete TR[e.id];return}
+  TR[e.id]=o[Math.floor(Math.random()*o.length)].id;
+}
+function renderE(){
+  var box=$("ebox");box.textContent="";var now=Date.now();
+  var up=S.exams.filter(function(e){return e.date&&e.date>now}).sort(function(a,b){return a.date-b.date})[0];
+  if(up){var us=examStat(up);box.appendChild(mk("div","nowbox",up.kind+" · "+up.subj+" · "+examLeft(up)+" · готово "+us.p+"%"))}
+  var f=document.createElement("form");
+  f.innerHTML='<label>Что сдаём<select name="kind"><option>Экзамен</option><option>Зачёт</option></select></label><label>Предмет<select name="subj"></select></label><label>Дата и время (можно указать позже)<input name="date" type="datetime-local"></label><label style="display:flex;gap:10px;align-items:center;color:var(--ink)"><input name="task" type="checkbox" checked style="width:22px;height:22px;flex:none">Добавить напоминания (создастся задача со сроком)</label><button class="add" type="submit">Добавить</button>';
+  opts(f.elements.subj,SUBJ);
+  f.onsubmit=function(ev){ev.preventDefault();
+    var kind=f.elements.kind.value,subj=f.elements.subj.value,dv=f.elements.date.value,date=dv?new Date(dv).getTime():null;
+    if(date!==null&&isNaN(date))date=null;
+    var e={id:"e"+Date.now(),kind:kind,subj:subj,date:date,qs:[],taskId:""};
+    if(date&&f.elements.task.checked){var t={id:"t"+Date.now(),type:kind,subj:subj,title:"Подготовка к "+(kind==="Экзамен"?"экзамену":"зачёту"),due:date,done:false,lesson:null};S.tasks.push(t);e.taskId=t.id}
+    S.exams.push(e);openE[e.id]=true;save();renderE();renderTasks();renderDays()};
+  box.appendChild(f);
+  if(!S.exams.length){box.appendChild(mk("p","note","Пока пусто. Добавьте экзамен или зачёт, затем вставьте список вопросов: по одному на строку, номера в начале уберутся сами."));return}
+  function eo(e){return e.date?(e.date>now?0:2):1}
+  S.exams.slice().sort(function(a,b){return eo(a)-eo(b)||(eo(a)===2?b.date-a.date:(a.date||0)-(b.date||0))}).forEach(function(e){
+    var st=examStat(e),d=document.createElement("details");
+    d.appendChild(mk("summary","",e.kind+" · "+e.subj+" · "+examLeft(e)+" · "+st.d+"/"+st.n+" ("+st.p+"%)"));
+    if(openE[e.id])d.open=true;
+    d.addEventListener("toggle",function(){openE[e.id]=d.open});
+    var bar=mk("div","bar"),bi=mk("i");bi.style.width=st.p+"%";bi.style.background="var(--acl)";bar.appendChild(bi);d.appendChild(bar);
+    var dl=mk("label","","Дата и время"),di=mk("input");di.type="datetime-local";if(e.date)di.value=toLocalInput(e.date);dl.style.marginTop="10px";
+    di.onchange=function(){var v=di.value?new Date(di.value).getTime():null;e.date=(v&&!isNaN(v))?v:null;syncExamTask(e);save();renderE();renderTasks();renderDays()};
+    dl.appendChild(di);d.appendChild(dl);
+    var tq=e.qs.filter(function(q){return q.id===TR[e.id]})[0];
+    if(tq){
+      var tb=mk("div","nxt");tb.style.marginTop="10px";tb.appendChild(mk("b","","Тренировка: вспомните ответ"));
+      var qt=mk("div","",tq.t);qt.style.cssText="font-size:17px;margin:8px 0";tb.appendChild(qt);
+      var tr=mk("div","row");tr.style.margin="0";
+      var b1=mk("button","pill","Знаю");b1.type="button";b1.onclick=function(){tq.done=true;nextQ(e);save();renderE()};
+      var b2=mk("button","pill","Повторить");b2.type="button";b2.onclick=function(){nextQ(e);renderE()};
+      var b3=mk("button","pill","Закрыть");b3.type="button";b3.onclick=function(){delete TR[e.id];renderE()};
+      tr.appendChild(b1);tr.appendChild(b2);tr.appendChild(b3);tb.appendChild(tr);d.appendChild(tb);
+    }
+    var tools=mk("div","row");tools.style.margin="10px 0";
+    var bt=mk("button","pill","Тренировка");bt.type="button";bt.onclick=function(){nextQ(e);if(!TR[e.id]){alert(e.qs.length?"Все вопросы выучены.":"Сначала добавьте вопросы.");return}openE[e.id]=true;renderE()};
+    var bo=mk("button","pill",e.f?"Показать все":"Только невыученные");bo.type="button";bo.onclick=function(){e.f=!e.f;save();renderE()};
+    var br=mk("button","pill","Сбросить отметки");br.type="button";br.onclick=function(){if(confirm("Снять все отметки «выучил»?")){e.qs.forEach(function(q){q.done=false});save();renderE()}};
+    var bd=mk("button","pill","Удалить");bd.type="button";bd.onclick=function(){if(!confirm("Удалить "+e.kind.toLowerCase()+" «"+e.subj+"» вместе с вопросами?"))return;S.exams=S.exams.filter(function(z){return z.id!==e.id});if(e.taskId)S.tasks=S.tasks.filter(function(t){return t.id!==e.taskId});save();renderE();renderTasks();renderDays()};
+    tools.appendChild(bt);tools.appendChild(bo);tools.appendChild(br);tools.appendChild(bd);d.appendChild(tools);
+    var al=mk("label","","Добавить вопросы (по одному на строку)"),ta=mk("textarea");ta.rows=4;ta.placeholder="1. Понятие и признаки государства\n2. Форма государства";al.appendChild(ta);
+    var ab=mk("button","add","Добавить вопросы");ab.type="button";ab.style.margin="8px 0 10px";
+    ab.onclick=function(){var ls=parseQs(ta.value);if(!ls.length)return;var base=Date.now();ls.forEach(function(t,i){e.qs.push({id:"q"+base+"_"+i,t:t,done:false})});openE[e.id]=true;save();renderE()};
+    d.appendChild(al);d.appendChild(ab);
+    var shown=0;
+    e.qs.forEach(function(q,i){
+      if(e.f&&q.done)return;shown++;
+      var r=mk("div","card"+(q.done?" done":"")),cb=mk("input");cb.type="checkbox";cb.checked=!!q.done;cb.setAttribute("aria-label","Выучил");
+      cb.onchange=function(){q.done=cb.checked;save();renderE()};
+      var c=mk("div","tt",(i+1)+". "+q.t);
+      var x=mk("button","del","×");x.setAttribute("aria-label","Удалить вопрос");x.onclick=function(){e.qs=e.qs.filter(function(z){return z.id!==q.id});save();renderE()};
+      r.appendChild(cb);r.appendChild(c);r.appendChild(x);d.appendChild(r);
+    });
+    if(e.qs.length&&!shown)d.appendChild(mk("p","note","Всё выучено. Отличная работа!"));
+    box.appendChild(d);
+  });
+}
+
 /* общее */
 function opts(sel,list){list.forEach(function(s){var o=mk("option","",s);o.value=s;sel.appendChild(o)})}
 opts($("tsubj"),SUBJ);opts($("nsubj"),SUBJ);opts($("nfilter"),["Все предметы"].concat(SUBJ));
 var NAV="home",HT="s";
 function showTab(){
   var id=NAV==="home"?HT:NAV;
-  ["s","t","n","q","j","p"].forEach(function(x){$(x).hidden=(x!==id)});
+  ["s","t","n","q","j","p","e"].forEach(function(x){$(x).hidden=(x!==id)});
   $("htabs").hidden=(NAV!=="home");$("hrow").hidden=(NAV!=="home");
   document.querySelectorAll("[data-nav]").forEach(function(x){x.setAttribute("aria-selected",String(x.dataset.nav===NAV))});
   document.querySelectorAll("[data-tab]").forEach(function(x){x.setAttribute("aria-selected",String(x.dataset.tab===HT))});
-  if(id==="t")syncLes();if(id==="s")renderDays();if(id==="q")openQ();if(id==="j")renderJ();if(id==="p")renderP();
+  if(id==="t")syncLes();if(id==="s")renderDays();if(id==="q")openQ();if(id==="j")renderJ();if(id==="p")renderP();if(id==="e")renderE();
   window.scrollTo(0,0);
 }
 document.querySelectorAll("[data-tab]").forEach(function(b){b.onclick=function(){HT=b.dataset.tab;showTab()}});
