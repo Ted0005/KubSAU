@@ -10,6 +10,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Иконка приложения
+        run: |
+          D=Assets.xcassets/AppIcon.appiconset
+          mkdir -p "$D"
+          SRC=$(ls icon.* | head -1)
+          sips -z 1024 1024 -s format png "$SRC" --out "$D/icon.png"
+          printf '{"info":{"author":"xcode","version":1}}' > Assets.xcassets/Contents.json
+          printf '{"images":[{"filename":"icon.png","idiom":"universal","platform":"ios","size":"1024x1024"}],"info":{"author":"xcode","version":1}}' > "$D/Contents.json"
+
       - name: Генерация проекта
         run: |
           brew install xcodegen
