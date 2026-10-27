@@ -3,12 +3,90 @@ import WebKit
 import UserNotifications
 import WidgetKit
 import Vision
+import BackgroundTasks
 
 // Учёба ЮФ2611: нативная оболочка для index.html.
 // Страница лежит внутри приложения и открывается по адресу uchyoba://local/index.html.
 // uchyoba://local/proxy?url=... загружает расписание с s.kubsau.ru средствами iOS (без CORS и сторонних прокси).
 
 private let bg = UIColor(red: 0.102, green: 0.114, blue: 0.106, alpha: 1) // #1a1d1b, как фон страницы
+
+let refreshID = "ru.arman.uchyoba.refresh"
+
+extension Notification.Name {
+    static let uchyobaActive = Notification.Name("uchyobaActive")
+}
+
+// MARK: - Фоновая подгрузка расписания
+// iOS сама решает, когда запустить задачу (обычно раз в несколько часов). Скачанная страница лежит в файле,
+// а при открытии приложения страница разбирает её и сразу показывает свежее расписание.
+
+enum ScheduleFetcher {
+    static var dir: URL {
+        let u = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
+        return u
+    }
+    static var htmlURL: URL { dir.appendingPathComponent("schedule.html") }
+    static var metaURL: URL { dir.appendingPathComponent("schedule.json") }
+
+    static func group() -> String {
+        return UserDefaults.standard.string(forKey: "group") ?? "ЮФ2611"
+    }
+
+    static func schedule() {
+        let request = BGAppRefreshTaskRequest(identifier: refreshID)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 60 * 60)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    static func fetch(completion: @escaping (Bool) -> Void) {
+        let g = group()
+        var comps = URLComponents(string: "https://s.kubsau.ru/")!
+        comps.queryItems = [URLQueryItem(name: "type_schedule", value: "1"),
+                            URLQueryItem(name: "val", value: g)]
+        guard let url = comps.url else { completion(false); return }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+        req.setValue("text/html", forHTTPHeaderField: "Accept")
+        URLSession.shared.dataTask(with: req) { data, resp, _ in
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                  let data = data,
+                  let html = String(data: data, encoding: .utf8),
+                  html.contains("неделя") else {
+                completion(false)
+                return
+            }
+            let meta: [String: Any] = ["group": g, "ts": Date().timeIntervalSince1970 * 1000]
+            do {
+                try data.write(to: htmlURL, options: .atomic)
+                let m = try JSONSerialization.data(withJSONObject: meta)
+                try m.write(to: metaURL, options: .atomic)
+                completion(true)
+            } catch {
+                completion(false)
+            }
+        }.resume()
+    }
+
+    static func run(task: BGAppRefreshTask) {
+        schedule() // планируем следующий запуск
+        var done = false
+        task.expirationHandler = {
+            if !done {
+                done = true
+                task.setTaskCompleted(success: false)
+            }
+        }
+        fetch { ok in
+            DispatchQueue.main.async {
+                if !done {
+                    done = true
+                    task.setTaskCompleted(success: ok)
+                }
+            }
+        }
+    }
+}
 
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -23,12 +101,28 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        _ = BGTaskScheduler.shared.register(forTaskWithIdentifier: refreshID, using: nil) { task in
+            if let t = task as? BGAppRefreshTask {
+                ScheduleFetcher.run(task: t)
+            } else {
+                task.setTaskCompleted(success: false)
+            }
+        }
         let w = UIWindow(frame: UIScreen.main.bounds)
         w.backgroundColor = bg
         w.rootViewController = WebViewController()
         w.makeKeyAndVisible()
         window = w
+        ScheduleFetcher.schedule()
         return true
+    }
+
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        ScheduleFetcher.schedule()
+    }
+
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        NotificationCenter.default.post(name: .uchyobaActive, object: nil)
     }
 }
 
@@ -122,6 +216,8 @@ final class WebViewController: UIViewController, WKUIDelegate, WKScriptMessageHa
         uc.addScriptMessageHandler(self, contentWorld: .page, name: "notify")
         uc.addScriptMessageHandler(self, contentWorld: .page, name: "widget")
         uc.addScriptMessageHandler(self, contentWorld: .page, name: "ocr")
+        uc.addScriptMessageHandler(self, contentWorld: .page, name: "group")
+        uc.addScriptMessageHandler(self, contentWorld: .page, name: "prefetched")
 
         web = WKWebView(frame: .zero, configuration: cfg)
         web.uiDelegate = self
@@ -136,6 +232,13 @@ final class WebViewController: UIViewController, WKUIDelegate, WKScriptMessageHa
     override func viewDidLoad() {
         super.viewDidLoad()
         web.load(URLRequest(url: URL(string: "uchyoba://local/index.html")!))
+        NotificationCenter.default.addObserver(self, selector: #selector(appBecameActive),
+                                               name: .uchyobaActive, object: nil)
+    }
+
+    // возврат в приложение: страница подхватывает фоновую загрузку и при необходимости обновляет расписание
+    @objc private func appBecameActive() {
+        web.evaluateJavaScript("window.onForeground && window.onForeground()", completionHandler: nil)
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
@@ -239,6 +342,28 @@ final class WebViewController: UIViewController, WKUIDelegate, WKScriptMessageHa
                 try? handler.perform([request])
                 let result = lines.joined(separator: "\n")
                 DispatchQueue.main.async { replyHandler(result, nil) }
+            }
+            return
+        }
+        if message.name == "group" {
+            // страница сообщает основную группу, чтобы фоновая загрузка брала нужное расписание
+            if let g = (message.body as? [String: Any])?["name"] as? String, !g.isEmpty {
+                UserDefaults.standard.set(g, forKey: "group")
+            }
+            replyHandler(true, nil)
+            return
+        }
+        if message.name == "prefetched" {
+            // отдаём странице скачанное в фоне расписание
+            if let d = try? Data(contentsOf: ScheduleFetcher.metaURL),
+               let m = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+               let html = try? String(contentsOf: ScheduleFetcher.htmlURL, encoding: .utf8) {
+                let reply: [String: Any] = ["group": (m["group"] as? String) ?? "",
+                                            "ts": (m["ts"] as? Double) ?? 0,
+                                            "html": html]
+                replyHandler(reply, nil)
+            } else {
+                replyHandler(nil, nil)
             }
             return
         }
