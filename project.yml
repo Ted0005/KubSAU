@@ -15,7 +15,7 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: Учёба
-        CFBundleShortVersionString: "3.7"
+        CFBundleShortVersionString: "3.8"
         CFBundleVersion: "1"
         UILaunchScreen: {}
         UIUserInterfaceStyle: Dark
