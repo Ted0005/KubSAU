@@ -297,11 +297,37 @@ function sendWidget(){
   if(!window.NATIVE||!window.webkit||!window.webkit.messageHandlers||!window.webkit.messageHandlers.widget)return;
   try{var p=window.webkit.messageHandlers.widget.postMessage({json:buildWidget()});if(p&&p.catch)p.catch(function(){})}catch(e){}
 }
+/* основная группа для фоновой загрузки расписания в приложении */
+function sendGroup(){
+  if(!window.NATIVE||!window.webkit||!window.webkit.messageHandlers||!window.webkit.messageHandlers.group)return;
+  try{var p=window.webkit.messageHandlers.group.postMessage({name:S.group});if(p&&p.catch)p.catch(function(){})}catch(e){}
+}
 function schedNotif(){
   if(!canNotify())return;
   clearTimeout(NT);
-  NT=setTimeout(function(){sendNotif(buildNotifs());sendWidget()},400);
+  NT=setTimeout(function(){sendNotif(buildNotifs());sendWidget();sendGroup()},400);
 }
+/* расписание, скачанное приложением в фоне: применяем, если оно свежее сохранённого */
+function applyPrefetched(){
+  var h=window.NATIVE&&window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.prefetched;
+  if(!h)return Promise.resolve(false);
+  return h.postMessage({}).then(function(r){
+    if(!r||!r.html||!r.group||r.group!==S.group)return false;
+    var c=S.sched[r.group];if(c&&c.updated&&c.updated>=r.ts)return false;
+    var ls=parse(r.html);if(!ls.length)return false;
+    S.sched[r.group]={lessons:ls,updated:r.ts};save();renderDays();return true;
+  }).catch(function(){return false});
+}
+var lastFg=0;
+window.onForeground=function(){
+  if(Date.now()-lastFg<5000)return;lastFg=Date.now();
+  applyPrefetched().then(function(){
+    var u=cur().updated;
+    if(navigator.onLine&&(!u||Date.now()-u>36e5))refresh();
+    else renderDays();
+  });
+};
+document.addEventListener("visibilitychange",function(){if(!document.hidden&&window.onForeground)window.onForeground()});
 /* вкладка «Настройки» */
 var NOPT=[[15,"15 мин"],[30,"30 мин"],[60,"1 час"],[180,"3 часа"],[1440,"1 день"],[4320,"3 дня"],[10080,"1 неделя"]];
 var NTYPES=[["ДЗ","Домашние задания"],["Дедлайн","Дедлайны"],["Зачёт","Зачёты"],["Экзамен","Экзамены"]];
@@ -346,6 +372,13 @@ function renderP(){
   var r2=pills([[3,"3 дня"],[7,"1 неделя"],[14,"2 недели"],[30,"Месяц"]],function(v){return S.nset.bk.d===v},function(v){S.nset.bk.d=v;save();renderP();renderBk()});if(!S.nset.bk.on)r2.style.opacity="0.5";s2.appendChild(r2);
   s2.appendChild(mk("p","note",S.lastBk?"Последняя копия: "+new Date(S.lastBk).toLocaleString("ru-RU"):"Копия ещё не делалась."));
   box.appendChild(s2);
+
+  var s4=mk("div","jsec");s4.appendChild(mk("h2","","Расписание"));
+  s4.appendChild(mk("p","note","Расписание обновляется при запуске, при возврате в приложение (если прошло больше часа), при появлении интернета и по кнопке «Обновить». Приложение также подгружает его в фоне, когда оно закрыто. Когда именно, решает iPhone: обычно раз в несколько часов, чаще, если вы часто пользуетесь приложением."));
+  s4.appendChild(mk("p","note","Чтобы фоновая загрузка работала, включите «Обновление контента» в Настройки iPhone → Основные → Обновление контента (для приложения «Учёба» тоже). В режиме экономии заряда iPhone её отключает."));
+  var c=cur();s4.appendChild(mk("p","note",c.updated?"Расписание группы "+S.group+" обновлено: "+new Date(c.updated).toLocaleString("ru-RU"):"Расписание группы "+S.group+" ещё не загружалось, показана встроенная копия."));
+  var rb=mk("button","ghost","Обновить расписание сейчас");rb.type="button";rb.onclick=function(){rb.textContent="Обновляю…";refresh();setTimeout(function(){renderP()},4000)};s4.appendChild(rb);
+  box.appendChild(s4);
 
   var s3=mk("div","jsec");s3.appendChild(mk("h2","","Пропуски"));
   s3.appendChild(mk("p","note","Предупреждать о предмете, если пропущено не меньше этой доли от уже проведённых часов:"));
@@ -1169,7 +1202,7 @@ setTimeout(function(){try{
 }catch(e){}},1500);
 setInterval(function(){renderDays();renderTasks();notifyDue()},60000);
 if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js").catch(function(){})}catch(e){}}
-if(navigator.onLine)refresh();
+applyPrefetched().then(function(){if(navigator.onLine)refresh()});
 window.addEventListener("online",refresh);
 </script>
 </body>
